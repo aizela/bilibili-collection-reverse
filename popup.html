@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>B站合集反转</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="eyebrow">让故事顺着看</span>
+        <h1>B站合集反转</h1>
+        <p class="intro">同时调整合集列表与播放器连播顺序。</p>
+      </header>
+      <section class="switch-card" aria-label="反转设置">
+        <label class="switch-row" for="reverse-enabled">
+          <span class="switch-label">反转小节内视频</span>
+          <span class="switch-control">
+            <input id="reverse-enabled" type="checkbox" role="switch" aria-describedby="scope-note" disabled>
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+        <p class="switch-help">调整每个小节里面的视频排列。</p>
+        <div class="switch-divider"></div>
+        <label class="switch-row" for="reverse-sections-enabled">
+          <span class="switch-label">反转小节顺序</span>
+          <span class="switch-control">
+            <input id="reverse-sections-enabled" type="checkbox" role="switch" aria-describedby="scope-note" disabled>
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
+        </label>
+        <p class="switch-help">调整上方“小节标签”的排列。</p>
+        <p id="status" class="status" role="status" aria-live="polite">正在读取设置…</p>
+      </section>
+      <p id="scope-note" class="scope-note">两个开关独立生效，也可以同时开启。视频内部的分 P 顺序保持不变。</p>
+      <div class="tip">
+        <strong>连续观看</strong>
+        <p>请在播放器中开启自动连播。</p>
+      </div>
+      <footer>设置会自动保存 · 仅在B站视频页生效</footer>
+    </main>
+  </body>
+</html>
