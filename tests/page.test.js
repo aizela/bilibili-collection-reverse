@@ -38,7 +38,7 @@ function makePlayer() {
   };
 }
 
-function harness(initial = collection()) {
+function harness(initial = collection(), setup = () => {}) {
   const subscribers = new Set();
   const messageListeners = new Set();
   const timers = new Set();
@@ -57,6 +57,8 @@ function harness(initial = collection()) {
     }
   };
   const root = {
+    _isMounted: true,
+    _isDestroyed: false,
     $options: { computed: { ugcMultipEpisodeList() {} } },
     $store: store,
     playerListType: 2,
@@ -66,13 +68,22 @@ function harness(initial = collection()) {
     }
   };
   const podVm = {
+    _isMounted: true,
     $options: {},
     $parent: root,
     _isDestroyed: false,
     selectedSlide: initial.sections[1],
     get podSectionList() { return store.state.sectionsInfo.sections; }
   };
-  const pod = { __vue__: podVm, isConnected: true };
+  const headerAttributes = new Map();
+  const header = {
+    getAttribute(name) { return headerAttributes.get(name) ?? null; },
+    setAttribute(name, value) { headerAttributes.set(name, value); }
+  };
+  const pod = {
+    __vue__: podVm, isConnected: true,
+    querySelector(selector) { assert.equal(selector, ".video-pod__header"); return header; }
+  };
   const window = {
     __BILI_REVERSE_CORE_V1__: core,
     nano: { InternalKind: { Manuscript: "manuscript" } },
@@ -82,6 +93,7 @@ function harness(initial = collection()) {
     setInterval(callback) { timers.add(callback); return callback; },
     clearInterval(callback) { timers.delete(callback); }
   };
+  setup({ store, root, podVm, pod, header });
   vm.runInNewContext(pageSource, {
     window,
     document: { querySelector(selector) { assert.equal(selector, ".video-pod"); return pod; } },
@@ -90,7 +102,7 @@ function harness(initial = collection()) {
   }, { filename: "page.js" });
 
   return {
-    store, root, podVm, window, commits, messages, subscribers, timers, warnings,
+    store, root, podVm, pod, header, window, commits, messages, subscribers, timers, warnings,
     toggle(enabled, reverseSectionsEnabled) {
       for (const listener of [...messageListeners]) listener({
         source: window, origin: ORIGIN,
@@ -104,6 +116,73 @@ function harness(initial = collection()) {
     status() { return messages.filter(message => message.type === "status").at(-1); }
   };
 }
+
+test("SSR collection markup is untouched until its Vue component has mounted", () => {
+  let stateReads = 0;
+  const h = harness(collection(), ({ pod, store }) => {
+    delete pod.__vue__;
+    const state = store.state;
+    Object.defineProperty(store, "state", { get() { stateReads += 1; return state; } });
+  });
+  h.toggle(true, true);
+  h.tick();
+  assert.equal(h.header.getAttribute("data-bili-reverse-ready"), null);
+  assert.equal(h.subscribers.size, 0);
+  assert.equal(stateReads, 0);
+  assert.equal(h.commits.length, 0);
+  assert.equal(h.root.player.calls.length, 0);
+
+  h.pod.__vue__ = h.podVm;
+  h.podVm._isMounted = false;
+  h.tick();
+  assert.equal(h.header.getAttribute("data-bili-reverse-ready"), null);
+  assert.equal(h.subscribers.size, 0);
+  assert.equal(stateReads, 0);
+
+  h.podVm._isMounted = true;
+  h.tick();
+  assert.equal(h.header.getAttribute("data-bili-reverse-ready"), "true");
+  assert.equal(h.subscribers.size, 1);
+  assert.deepEqual(h.root.player.queue.map(episode => episode.bvid), ["B1", "B2", "A1", "A2", "A3"]);
+});
+
+test("a mounted collection waits for all ancestors before marking or accessing the site model", () => {
+  let stateReads = 0;
+  const app = { _isMounted: false, _isDestroyed: false };
+  const h = harness(collection(), ({ root, store }) => {
+    root.$parent = app;
+    const state = store.state;
+    Object.defineProperty(store, "state", { get() { stateReads += 1; return state; } });
+  });
+  h.toggle(true, true);
+  h.tick();
+  assert.equal(h.header.getAttribute("data-bili-reverse-ready"), null);
+  assert.equal(h.subscribers.size, 0);
+  assert.equal(stateReads, 0);
+  assert.equal(h.commits.length, 0);
+  assert.equal(h.root.player.calls.length, 0);
+
+  app._isMounted = true;
+  h.tick();
+  assert.equal(h.header.getAttribute("data-bili-reverse-ready"), "true");
+  assert.equal(h.subscribers.size, 1);
+  assert.deepEqual(h.root.player.queue.map(episode => episode.bvid), ["B1", "B2", "A1", "A2", "A3"]);
+});
+
+test("destroyed ancestors and disconnected collection nodes are never marked ready", () => {
+  for (const setup of [
+    ({ root }) => { root._isDestroyed = true; },
+    ({ pod }) => { pod.isConnected = false; }
+  ]) {
+    const h = harness(collection(), setup);
+    h.toggle(true, true);
+    h.tick();
+    assert.equal(h.header.getAttribute("data-bili-reverse-ready"), null);
+    assert.equal(h.subscribers.size, 0);
+    assert.equal(h.commits.length, 0);
+    assert.equal(h.root.player.calls.length, 0);
+  }
+});
 
 test("enabling reverses each section and the native queue; disabling restores both", () => {
   const original = collection();

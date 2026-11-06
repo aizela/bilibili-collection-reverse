@@ -24,10 +24,14 @@
   function discover() {
     const pod = document.querySelector(".video-pod");
     const vm = pod && pod.__vue__;
-    if (!vm || vm._isDestroyed) return null;
-    let root = vm;
-    while (root && !(root.$options?.computed?.ugcMultipEpisodeList && root.$store)) {
-      root = root.$parent;
+    if (!vm || !pod.isConnected) return null;
+    let root = null;
+    // SSR already contains the collection DOM before Vue has hydrated it.
+    // Wait for every ancestor so inserting our controls cannot invalidate
+    // hydration and cause unrelated components, including navigation, to remount.
+    for (let current = vm; current; current = current.$parent) {
+      if (current._isMounted !== true || current._isDestroyed) return null;
+      if (!root && current.$options?.computed?.ugcMultipEpisodeList && current.$store) root = current;
     }
     if (!root || typeof root.$store.commit !== "function") return null;
     return { pod, vm, root, store: root.$store };
@@ -130,7 +134,14 @@
   }
 
   function refresh() {
-    bind(discover());
+    const next = discover();
+    if (next) {
+      const header = next.pod.querySelector(".video-pod__header");
+      if (header && header.getAttribute("data-bili-reverse-ready") !== "true") {
+        header.setAttribute("data-bili-reverse-ready", "true");
+      }
+    }
+    bind(next);
     reconcile();
   }
 
